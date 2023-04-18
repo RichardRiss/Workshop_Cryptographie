@@ -27,7 +27,7 @@ def byte_xor(b1: bytes, b2: bytes) -> bytes:
     # ByteString to Bytearray to XOR-Bytes
     ####################
     output = bytearray(len(b1))
-    # Fix shorter Key on manual call
+    # Fix edge case shorter Key
     if len(b2) < len(b1):
         b2 = b2 + b2[:(len(b1) - len(b2))]
 

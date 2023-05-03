@@ -100,11 +100,7 @@ def test():
     for (_, ps, cs) in test_data:
         key_recovered = kpa(ps, cs)
         for (p, c) in zip(ps, cs):
-            try:
-                assert(KeyMatrix(key_recovered).inverse() * vector(c) == vector(p))
-            except:
-                print(f'Error with following calculation:')
-                print(f'{KeyMatrix(key_recovered).inverse()} * {vector(c)} == {vector(p)}')
+            assert(KeyMatrix(key_recovered).inverse() * vector(c) == vector(p))
         i += 1
         print(f'{i}/{len(test_data)} keys successfully recovered.')
 

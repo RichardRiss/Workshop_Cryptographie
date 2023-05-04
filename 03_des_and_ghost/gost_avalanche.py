@@ -3,15 +3,15 @@
 from typing import List
 
 DEBUG = False
-#DEBUG = True
+# DEBUG = True
 
 
 # We are going to use the following keys and plaintexts.
 # Note that your program will be tested on different keys and plaintext for grading!
 plaintext0: int = 0x02468ACEECA86420
 plaintext1: int = 0x12468ACEECA86420
-key0: int       = 0x08C73A08514436F2E150A865EB75443F904396E66638E182170C1CA1CB6C1062
-key1: int       = 0x18C73A08514436F2E150A865EB75443F904396E66638E182170C1CA1CB6C1062
+key0: int = 0x08C73A08514436F2E150A865EB75443F904396E66638E182170C1CA1CB6C1062
+key1: int = 0x18C73A08514436F2E150A865EB75443F904396E66638E182170C1CA1CB6C1062
 
 # 	GOST R 34.12-2015 S-Box
 sboxes: List[List[int]] = [
@@ -24,6 +24,7 @@ sboxes: List[List[int]] = [
     [0x8, 0xE, 0x2, 0x5, 0x6, 0x9, 0x1, 0xC, 0xF, 0x4, 0xB, 0x0, 0xD, 0xA, 0x3, 0x7],
     [0x1, 0x7, 0xE, 0xD, 0x0, 0x5, 0x8, 0x3, 0x4, 0xF, 0xA, 0x6, 0x9, 0xC, 0xB, 0x2]
 ]
+
 
 # This week's assignment is to meausure the avalanche effect in GOST,
 # both for changes in the plaintext and in the key. As you can see,
@@ -45,10 +46,10 @@ sboxes: List[List[int]] = [
 # on and measure the avalanche effects for your implementation.
 
 
-def gost(text: int, key: int, encrypt: bool = True, rounds:int = 32) -> int:
-##################
-# YOUR CODE HERE #
-##################
+def gost(text: int, key: int, encrypt: bool = True, rounds: int = 32) -> int:
+    ##################
+    # YOUR CODE HERE #
+    ##################
     # get left and right part of the 64 Bit Block
     left = text >> 32
     right = text & 0xffffffff
@@ -59,8 +60,11 @@ def gost(text: int, key: int, encrypt: bool = True, rounds:int = 32) -> int:
     # Create key schedule
     key_schedule = {key: (key % 8) if key < 24 else (7 - key % 8) for key in range(32)}
 
+    # differentiate between encrypt and decrypt
+    rng = range(rounds) if encrypt else range(rounds - 1, -1, -1)
+
     # create cypher
-    for rnd in range(rounds):
+    for rnd in rng:
         # calculate right + Subkey
         subright = right + subkeys[key_schedule[rnd]]
         # use s-Box
@@ -74,20 +78,21 @@ def gost(text: int, key: int, encrypt: bool = True, rounds:int = 32) -> int:
         # cypher as new right value
         right = new_right
 
-
+    # Reverse again
+    left, right = right, left
     # return ciphertext
-    return (left << 32) & right
+    return (left << 32) | right
 
 
 # You will probably need a number of utility functions to implement
 # gostEncrypt.
 
-def rotate_left(value:int, rotations: int) -> int:
+def rotate_left(value: int, rotations: int) -> int:
     bitsize = 32
-    return ((value << rotations) & ((1 << bitsize) - 1)) |(value >> (bitsize - rotations))
+    return ((value << rotations) & ((1 << bitsize) - 1)) | (value >> (bitsize - rotations))
 
 
-def s_box(value:int)-> int:
+def s_box(value: int) -> int:
     # make chunks from given value
     chunks = key_to_chunks(value)
     boxed_value = 0
@@ -96,23 +101,24 @@ def s_box(value:int)-> int:
         boxed_value |= sboxes[i][chunks[i]] << (i * 4)
     return boxed_value
 
-def key_to_chunks(key: int)-> int:
+
+def key_to_chunks(key: int) -> [int]:
     chunks = []
     for i in range(8):
         # take last 4bit and shift 4bit right
-        chunks.append((key >> (i*4)) & 0xf)
+        chunks.append((key >> (i * 4)) & 0xf)
     return chunks
 
 
 def key_to_subkey(key: int) -> [int]:
-##################
-# YOUR CODE HERE #
-##################
+    ##################
+    # YOUR CODE HERE #
+    ##################
     # 256 bit key to subkeys of 32bit length
     subkeys = []
     for i in range(8):
         # take last 32bit and shift 32bit right
-        subkeys.append((key >> (i*32)) & 0xffffffff)
+        subkeys.append((key >> (i * 32)) & 0xffffffff)
     # reverse list to get back left to right order of the key
     subkeys.reverse()
     return subkeys
@@ -120,8 +126,9 @@ def key_to_subkey(key: int) -> [int]:
 
 def bitDifference(a: int, b: int) -> int:
     """Return number of bits different between a and b."""
-    pass
-    #pass
+    return bin(a ^ b).count("1")
+
+
 ##################
 # YOUR CODE HERE #
 ##################
@@ -129,10 +136,10 @@ def bitDifference(a: int, b: int) -> int:
 
 def testGost() -> None:
     ciphertext = gost(text=plaintext0, key=key0, encrypt=True)
-    assert(ciphertext == 0xB3196C3940160B06)
+    assert (ciphertext == 0xB3196C3940160B06)
     deciphered = gost(text=ciphertext,
                       key=key0, encrypt=False)
-    assert(plaintext0 == deciphered)
+    assert (plaintext0 == deciphered)
 
     # Since it is notoriously hard to get bit ordering in crypto
     # algorithms right, here are the temporary values for the first
@@ -174,7 +181,7 @@ def plaintextAvalanche() -> None:
     print('\nAvalanche effect for changes in plaintext.')
     print('Original difference: %d' %
           bitDifference(plaintext0, plaintext1))
-    for rounds in range(32+1):
+    for rounds in range(32 + 1):
         c0 = gost(text=plaintext0, key=key0, rounds=rounds, encrypt=True)
         c1 = gost(text=plaintext1, key=key0, rounds=rounds, encrypt=True)
         print('Round: %02d Delta: %d' % (rounds, bitDifference(c0, c1)))
@@ -184,7 +191,7 @@ def keyAvalanche() -> None:
     print('\nAvalanche effect for changes in key.')
     print('Original difference: %d' %
           bitDifference(plaintext0, plaintext0))
-    for rounds in range(32+1):
+    for rounds in range(32 + 1):
         c0 = gost(text=plaintext0, key=key0, rounds=rounds, encrypt=True)
         c1 = gost(text=plaintext0, key=key1, rounds=rounds, encrypt=True)
         print('Round: %02d Delta: %d' % (rounds, bitDifference(c0, c1)))

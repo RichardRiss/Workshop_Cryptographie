@@ -8,13 +8,19 @@
 
 
 # S-box
-S_BOX = [
-    [0x9, 0x4, 0xa, 0xb],
-    [0xd, 0x1, 0x8, 0x5],
-    [0x6, 0x2, 0x0, 0x3],
-    [0xc, 0xe, 0xf, 0x7]
-]
+S_BOX = {
+    0b0000: 0b1001, 0b1000: 0b0110,
+    0b0001: 0b0100, 0b1001: 0b0010,
+    0b0010: 0b1010, 0b1010: 0b0000,
+    0b0011: 0b1011, 0b1011: 0b0011,
+    0b0100: 0b1101, 0b1100: 0b1100,
+    0b0101: 0b0001, 0b1101: 0b1110,
+    0b0110: 0b1000, 0b1110: 0b1111,
+    0b0111: 0b0101, 0b1111: 0b0111
+}
 
+# Round constant
+R_CON = [0b00000000,0b10000000, 0b00110000]
 
 
 
@@ -42,6 +48,7 @@ def pp(b):
     for i in range(0, len(t), 4):
         r += t[i:i+4] + ' '
     return(r)
+
 
 # Since the mix column operations are tricky, the following
 # implementations are provided for your convenience.
@@ -72,30 +79,47 @@ def mix_col(d, inv=False):
 def inv_mix_col(d):
     return(mix_col(d=d, inv=True))
 
+
 # You probably want to define more utility functions
+
+def listtoint(bin):
+    return sum(val*(2**idx) for idx, val in enumerate(reversed(bin)))
 
 ##################
 # YOUR CODE HERE #
 ##################
-def initial_round(plaintext, key):
-    # Get Round key
-    round_key = key [:7]
-
-    # XOR the first 8 bits of the input with the key
-    xored_input = [a ^ b for a, b in zip(plaintext[:8], round_key)]
-
-    # Substitute the input using the S-box
-    substituted_input = [S_BOX[row][col] for row, col in zip(xored_input[:4], xored_input[4:])]
+def key_expansion(key:int):
     
-    # Shift the substituted input to the left by one bit
-    shifted_input = substituted_input[1:] + substituted_input[:1]
+    # split key
+    left = key[:8]
+    right = key [8:]
 
+    # first sub-key is just input key
+    keyDict = {0:key}
+
+    for i in range(1,3):
+        # Create nibbles from right side
+        N0 = right[:4]
+        N1 = right[4:]
+
+        # Rotate word
+        N0, N1 = N1, N0
+
+        # S-Box on nibbles
+        N0_new = S_BOX[listtoint(N0)]
+        N1_new = S_BOX[listtoint(N1)]
+
+        # Xor with RoundKey and recombine to G
+        G = int2blist((N0_new << 4 & N1_new) ^ R_CON[i], 8)
+        
+        # recombine to new Subkey-words
+        left = xor(left,G)
+        right = xor(right, left)
+
+        # Add to key dictionary
+        keyDict[i] = left + right
     
-    # XOR the shifted input with the second 8 bits of the key  
-    r1_text = [a ^ b for a, b in zip(shifted_input, key[8:])]
-    return r1_text
-
-
+    return keyDict
 
 
 # 2 Points
@@ -103,8 +127,8 @@ def saes_encrypt(plaintext, key):
     ##################
     # YOUR CODE HERE #
     ##################
-    r1_text = initial_round(plaintext, key)
-    print(r1_text)
+    # expand key
+    keyDict = key_expansion(key)
     pass
 
 
@@ -141,3 +165,4 @@ def test():
 
 if __name__ == '__main__':
     test()
+

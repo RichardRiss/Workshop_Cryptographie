@@ -19,8 +19,15 @@ S_BOX = {
     0b0111: 0b0101, 0b1111: 0b0111
 }
 
+# Invert S-Box for decryption
+S_BOX_INV = {v: k for k, v in S_BOX.items()}
+
 # Round constant
-R_CON = [0b00000000,0b10000000, 0b00110000]
+R_CON = [
+    [0,0,0,0,0,0,0,0],
+    [1,0,0,0,0,0,0,0],
+    [0,0,1,1,0,0,0,0]
+    ]
 
 
 
@@ -91,16 +98,17 @@ def listtoint(bin):
 def key_expansion(key:int):
     
     # split key
-    left = key[:8]
-    right = key [8:]
+    w0 = key[:8]
+    w1 = key [8:]
+
 
     # first sub-key is just input key
     keyDict = {0:key}
 
     for i in range(1,3):
-        # Create nibbles from right side
-        N0 = right[:4]
-        N1 = right[4:]
+        # Create nibbles from first word
+        N0 = w1[:4]
+        N1 = w1[4:]
 
         # Rotate word
         N0, N1 = N1, N0
@@ -108,18 +116,26 @@ def key_expansion(key:int):
         # S-Box on nibbles
         N0_new = S_BOX[listtoint(N0)]
         N1_new = S_BOX[listtoint(N1)]
-
-        # Xor with RoundKey and recombine to G
-        G = int2blist((N0_new << 4 & N1_new) ^ R_CON[i], 8)
         
+        # Xor with RoundKey and recombine to G
+        G = xor(int2blist((N0_new << 4 | N1_new),8),R_CON[i])
+
         # recombine to new Subkey-words
-        left = xor(left,G)
-        right = xor(right, left)
+        w0 = xor(w0,G)
+        w1 = xor(w1, w0)
 
         # Add to key dictionary
-        keyDict[i] = left + right
-    
+        keyDict[i] = w0 + w1
+
     return keyDict
+
+def sbox_nibbles(ciphertext, inv=False):
+    # split list in nibbles -> sbox -> add back to list of nibbles
+    if inv:
+        retval = [int2blist(S_BOX_INV[listtoint(ciphertext[i*4:(i*4+4)])],4) for i in range(4)]
+    else:
+        retval = [int2blist(S_BOX[listtoint(ciphertext[i*4:(i*4+4)])],4) for i in range(4)]
+    return retval
 
 
 # 2 Points
@@ -129,15 +145,95 @@ def saes_encrypt(plaintext, key):
     ##################
     # expand key
     keyDict = key_expansion(key)
-    pass
+
+    # add first round key
+    ciphertext = xor(plaintext, keyDict[0])
+
+    ##########
+    # Round 1
+    ##########
+    # substitute nibbles
+    sboxed_nibbles = sbox_nibbles(ciphertext)
+
+    # shift rows
+    sboxed_nibbles[1],sboxed_nibbles[3] = sboxed_nibbles[3], sboxed_nibbles[1]
+
+    # add back together
+    state = [item for nibble in sboxed_nibbles for item in nibble]
+    
+    # Mix columns
+    mixed_state = mix_col(state)
+    
+    # Add Round key
+    ciphertext = xor(mixed_state, keyDict[1])
+    
+    ##########
+    # Round 2
+    ##########
+    # substitute nibbles
+    sboxed_nibbles = sbox_nibbles(ciphertext)
+
+    # shift rows
+    sboxed_nibbles[1],sboxed_nibbles[3] = sboxed_nibbles[3], sboxed_nibbles[1]
+
+    # add back together
+    state = [item for nibble in sboxed_nibbles for item in nibble]
+
+    # Add Round key
+    ciphertext = xor(state, keyDict[2])
+
+    return ciphertext
 
 
 # 2 Points
 def saes_decrypt(ciphertext, key):
-    pass
-##################
-# YOUR CODE HERE #
-##################
+    ##################
+    # YOUR CODE HERE #
+    ##################
+    # expand key
+    keyDict = key_expansion(key)
+    
+    # add last round key
+    plaintext = xor(ciphertext, keyDict[2])
+
+    ##########
+    # Round 1
+    ##########
+    # inverse shift row
+    plaintext[4:8],plaintext[12:16] = plaintext[12:16], plaintext[4:8]
+
+    #substitute inverse nibble
+    sboxed_nibbles = sbox_nibbles(plaintext, inv=True)
+
+    # add back together
+    state = [item for nibble in sboxed_nibbles for item in nibble]
+
+    # Add Round key
+    round_state = xor(state, keyDict[1])
+
+    # inverse mix cols
+    plaintext = mix_col(round_state, inv=True)
+
+
+    ##########
+    # Round 2
+    ##########
+    # inverse shift row
+    plaintext[4:8],plaintext[12:16] = plaintext[12:16], plaintext[4:8]
+
+    #substitute inverse nibble
+    sboxed_nibbles = sbox_nibbles(plaintext, inv=True)
+
+    # add back together
+    state = [item for nibble in sboxed_nibbles for item in nibble]
+
+    # Add Round key
+    plaintext = xor(state, keyDict[0])
+
+    return plaintext
+
+
+
 
 def test():
     for (plaintext, key, ciphertext) in [
@@ -157,11 +253,11 @@ def test():
         plaintext = string2blist(plaintext)
         ciphertext = string2blist(ciphertext)
         key = string2blist(key)
-        saes_encrypt(plaintext=plaintext, key=key)
-        #assert(saes_encrypt(plaintext=plaintext, key=key)
-        #       == ciphertext)
-        #assert(saes_decrypt(ciphertext=ciphertext, key=key)
-        #       == plaintext)
+
+        assert(saes_encrypt(plaintext=plaintext, key=key)
+               == ciphertext)
+        assert(saes_decrypt(ciphertext=ciphertext, key=key)
+               == plaintext)
 
 if __name__ == '__main__':
     test()

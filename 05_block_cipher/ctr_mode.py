@@ -13,12 +13,13 @@
 # not run it with any other ciphertext.
 
 import hashlib
-from Crypto.Cipher import AES
+
+
 # from typing import list
 
 
 def hex2str(s: str) -> str:
-    return("".join(map(lambda x: chr(int(x, 16)), s.split())))
+    return "".join(map(lambda x: chr(int(x, 16)), s.split()))
 
 
 ciphertext: str = hex2str("""
@@ -262,55 +263,109 @@ AC FE 5E
 '''
 What do we know?
     block length 256Bit?
-    256 bit key
+    256 bit key -> 15 Round Keys
     counter somewhere between 0 and 9
     Text is english alphabet without linebreak -> A-z + space
     ACII 097-122 (a-z) + 065-090 (A-Z) + 032 (Space) all dezimal
     Average word length in english alphabet is 6 -> high probability to have a space on one line
     
     -->
-    decode two lines and list all possible keys
-    either use dictionary or find two keys that have a difference of 0-9
+    decode all bytes that use the same keybyte with ascii A-z + Space
+    record most is_ascii() occurences
+    keybyte with most matches wins
     -->
 '''
 
+'''
+def bruteforce_key(line: str):
+    list_line = line.split()
+    key_list = []
+    key_length = 128
+    key_bytes = key_length // 8
+    max_value = 2 ** 8
+    total_keys = max_value ** key_bytes
+    for i in range(total_keys):
+        key = i.to_bytes(key_bytes, 'big')
+        byte_list = [byte for byte in key]
+        plaintext = []
+        for c, b in enumerate(list_line):
+            sym = int(b, 16) ^ byte_list[c]
+            if chr(sym).isascii():
+                plaintext.append(sym)
+            else:
+                break
+        if len(plaintext) == len(key):
+            key_list.append([byte for byte in key])
+            print(''.join([chr(a) for a in plaintext]))
 
-def xor_space(encoded_string):
-    # Split the string into individual bytes
-    bytes_list = encoded_string.split()
-    num_bytes = len(bytes_list)
+        # Print a progress bar
+        progress_bar(i, total_keys, 40)
 
-    for i in range(num_bytes):
-        space_byte = int(bytes_list[i],16)
-        # find key for assumed ascii of space (0x20)
-        key = space_byte ^ int('20', 16)
-        # loop all possible starting values
-        for counter in range(9):
-            neutral_key = key ^ counter
-            versions = []
-            for j in range(num_bytes):
-                if j == i:
-                    versions.append(' ')
-                else:
-                    byte = int(bytes_list[j],16)
-                    decoded_byte = chr(byte ^ (neutral_key ^ ((j - i + counter) % 10)))
-                    versions.append(decoded_byte)
-            try:
-                print(' '.join(versions))
-            except:
-                pass
+
+def progress_bar(value, total_value, bar_width):
+    # Calculate progress
+    progress = (value + 1) / total_value
+    filled_width = int(progress * bar_width)
+    bar = '#' * filled_width + '-' * (bar_width - filled_width)
+
+    # Update status bar
+    print(f'[{bar}] {progress * 100:.8f}%', end='\r')
+'''
+
+
+def bxor(a, b):
+    return bytes([ord(x) ^ y for (x, y) in zip(a, b)])
+
+
+high_prio_ascii = [ord(i) for i in ['e', 't', 'a', 'o', 'i', 'n', 's', 'h', 'r', 'd', 'l', 'u']]
+#ascii_text_chars = list(range(97, 122))
+ascii_text_chars = list(range(97, 122)) + [32] + list(range(65, 90)) #+ [40, 41, 44, 46, 59]
+
+
+def attack_single_byte_xor(ciphertext):
+    # a variable to keep track of the best candidate so far
+    best = None
+    for i in range(2 ** 8):
+        candidate_key = i.to_bytes(1, byteorder='big')
+        keystream = candidate_key * len(ciphertext)
+        candidate_message = bxor(ciphertext, keystream)
+        # get all possible combinations
+        sum_letters = sum([x in ascii_text_chars for x in candidate_message])
+        sum_letters += sum([x in high_prio_ascii for x in candidate_message])
+        # if the obtained message has more letters than any other candidate before
+        if best == None or sum_letters > best['sum_letters']:
+            # store the current key and message as our best candidate so far
+            best = {"message": candidate_message, 'sum_letters': sum_letters, 'key': candidate_key}
+    return best
+
+
+def fixed_nonce_attack(ciphertext):
+    chunk_size = 10 * 16
+    list_cipher = []
+    for i in range(0, len(ciphertext), chunk_size):
+        list_cipher.append(ciphertext[i:i + chunk_size])
+    # Drop shorter block
+    spare_cipher = list_cipher[-1]
+    list_cipher = list_cipher[:-1]
+    columns = [attack_single_byte_xor(b) for b in zip(*list_cipher)]
+    spare_plaintext = ''.join([bytes(bxor(i, columns[c]['key'])).decode('ascii') for c, i in enumerate(spare_cipher)])
+    messages = [col['message'] for col in columns]
+    return ''.join([bytes(msg).decode('ascii') for msg in zip(*messages)]) + spare_plaintext
 
 
 def decode(ciphertext: str) -> str:
     """Return plaintext as string."""
-##################
-# YOUR CODE HERE #
-##################
-    return(plaintext)
+    ##################
+    # YOUR CODE HERE #
+    ##################
+    return (fixed_nonce_attack(ciphertext))
 
 
 if __name__ == '__main__':
-    xor_space("70 6A AC 10 0B 67 44 43 B7 62 2F 69 03 16 79 09")
-    #plaintext: str = decode(ciphertext)
-    #assert(hashlib.sha256(plaintext.encode('ascii')).hexdigest() ==
-           #'0cc9a5db2868b285f35c8217bd8e33dcec88a2cb8346223eeabc565060904883')
+    #plaintext = fixed_nonce_attack(ciphertext)
+    #print(hashlib.sha256(plaintext.encode('ascii')).hexdigest())
+    # bruteforce_key("70 6A AC 10 0B 67 44 43 B7 62 2F 69 03 16 79 09")
+    plaintext: str = decode(ciphertext)
+    assert(hashlib.sha256(plaintext.encode('ascii')).hexdigest() ==
+           '0cc9a5db2868b285f35c8217bd8e33dcec88a2cb8346223eeabc565060904883')
+    print("Fin")

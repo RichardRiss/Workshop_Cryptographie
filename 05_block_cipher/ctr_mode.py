@@ -276,59 +276,29 @@ What do we know?
     -->
 '''
 
-'''
-def bruteforce_key(line: str):
-    list_line = line.split()
-    key_list = []
-    key_length = 128
-    key_bytes = key_length // 8
-    max_value = 2 ** 8
-    total_keys = max_value ** key_bytes
-    for i in range(total_keys):
-        key = i.to_bytes(key_bytes, 'big')
-        byte_list = [byte for byte in key]
-        plaintext = []
-        for c, b in enumerate(list_line):
-            sym = int(b, 16) ^ byte_list[c]
-            if chr(sym).isascii():
-                plaintext.append(sym)
-            else:
-                break
-        if len(plaintext) == len(key):
-            key_list.append([byte for byte in key])
-            print(''.join([chr(a) for a in plaintext]))
+# ascii value for evaluation
+high_prio_ascii = [ord(i) for i in ['e', 't', 'a', 'o', 'i', 'n', 's', 'h', 'r', 'd', 'l', 'u']]
+ascii_text_chars = list(range(97, 122)) + [32] + list(range(65, 90))  # + [40, 41, 44, 46, 59]
 
-        # Print a progress bar
-        progress_bar(i, total_keys, 40)
-
-
-def progress_bar(value, total_value, bar_width):
-    # Calculate progress
-    progress = (value + 1) / total_value
-    filled_width = int(progress * bar_width)
-    bar = '#' * filled_width + '-' * (bar_width - filled_width)
-
-    # Update status bar
-    print(f'[{bar}] {progress * 100:.8f}%', end='\r')
-'''
-
-
+# xor predicted key with extracted letter
 def bxor(a, b):
     return bytes([ord(x) ^ y for (x, y) in zip(a, b)])
 
 
-high_prio_ascii = [ord(i) for i in ['e', 't', 'a', 'o', 'i', 'n', 's', 'h', 'r', 'd', 'l', 'u']]
-#ascii_text_chars = list(range(97, 122))
-ascii_text_chars = list(range(97, 122)) + [32] + list(range(65, 90)) #+ [40, 41, 44, 46, 59]
-
-
-def attack_single_byte_xor(ciphertext):
-    # a variable to keep track of the best candidate so far
+def guess_single_byte_xor(cipherlist):
+    ##################
+    # loop over all possible keys for 1 Byte
+    # extend the key to match length of cipherlist
+    # decrypt each byte and assign a score for english language
+    # additional score for recurrent letters
+    # key with highest score wins
+    # return decrypted letters, key and score
+    ##################
     best = None
     for i in range(2 ** 8):
         candidate_key = i.to_bytes(1, byteorder='big')
-        keystream = candidate_key * len(ciphertext)
-        candidate_message = bxor(ciphertext, keystream)
+        keystream = candidate_key * len(cipherlist)
+        candidate_message = bxor(cipherlist, keystream)
         # get all possible combinations
         sum_letters = sum([x in ascii_text_chars for x in candidate_message])
         sum_letters += sum([x in high_prio_ascii for x in candidate_message])
@@ -340,6 +310,14 @@ def attack_single_byte_xor(ciphertext):
 
 
 def fixed_nonce_attack(ciphertext):
+    ##################
+    # Cut Ciphertext into chunks of 128Bit * 10 because that's the generated key length
+    # extract last cipherblock because it is not 128Bit and has to be reassembled diffrently
+    # for every byte in the key, put the corresponding letter from each block into a list
+    # guess the key for each letter-list
+    # reassemble the decrypted letters and use the corresponding keys to decrypt the incomplete last block
+    # return as plaintext
+    ##################
     chunk_size = 10 * 16
     list_cipher = []
     for i in range(0, len(ciphertext), chunk_size):
@@ -347,7 +325,7 @@ def fixed_nonce_attack(ciphertext):
     # Drop shorter block
     spare_cipher = list_cipher[-1]
     list_cipher = list_cipher[:-1]
-    columns = [attack_single_byte_xor(b) for b in zip(*list_cipher)]
+    columns = [guess_single_byte_xor(b) for b in zip(*list_cipher)]
     spare_plaintext = ''.join([bytes(bxor(i, columns[c]['key'])).decode('ascii') for c, i in enumerate(spare_cipher)])
     messages = [col['message'] for col in columns]
     return ''.join([bytes(msg).decode('ascii') for msg in zip(*messages)]) + spare_plaintext
@@ -362,10 +340,9 @@ def decode(ciphertext: str) -> str:
 
 
 if __name__ == '__main__':
-    #plaintext = fixed_nonce_attack(ciphertext)
-    #print(hashlib.sha256(plaintext.encode('ascii')).hexdigest())
+    # plaintext = fixed_nonce_attack(ciphertext)
+    # print(hashlib.sha256(plaintext.encode('ascii')).hexdigest())
     # bruteforce_key("70 6A AC 10 0B 67 44 43 B7 62 2F 69 03 16 79 09")
     plaintext: str = decode(ciphertext)
-    assert(hashlib.sha256(plaintext.encode('ascii')).hexdigest() ==
-           '0cc9a5db2868b285f35c8217bd8e33dcec88a2cb8346223eeabc565060904883')
-    print("Fin")
+    assert (hashlib.sha256(plaintext.encode('ascii')).hexdigest() ==
+            '0cc9a5db2868b285f35c8217bd8e33dcec88a2cb8346223eeabc565060904883')
